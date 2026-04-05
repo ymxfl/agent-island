@@ -19,6 +19,7 @@ struct SessionState: Equatable, Identifiable, Sendable {
 
     // MARK: - Instance Metadata
 
+    let provider: AgentProvider
     var pid: Int?
     var tty: String?
     var isInTmux: Bool
@@ -68,6 +69,7 @@ struct SessionState: Equatable, Identifiable, Sendable {
         sessionId: String,
         cwd: String,
         projectName: String? = nil,
+        provider: AgentProvider = .claude,
         pid: Int? = nil,
         tty: String? = nil,
         isInTmux: Bool = false,
@@ -86,6 +88,7 @@ struct SessionState: Equatable, Identifiable, Sendable {
         self.sessionId = sessionId
         self.cwd = cwd
         self.projectName = projectName ?? URL(fileURLWithPath: cwd).lastPathComponent
+        self.provider = provider
         self.pid = pid
         self.tty = tty
         self.isInTmux = isInTmux

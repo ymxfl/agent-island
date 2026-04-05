@@ -25,18 +25,21 @@ struct HookEvent: Codable, Sendable {
     let toolUseId: String?
     let notificationType: String?
     let message: String?
+    let provider: AgentProvider?
 
     enum CodingKeys: String, CodingKey {
         case sessionId = "session_id"
-        case cwd, event, status, pid, tty, tool
-        case toolInput = "tool_input"
-        case toolUseId = "tool_use_id"
-        case notificationType = "notification_type"
-        case message
+        case cwd, event, status, pid, tty, tool, provider
+        case toolInput = "tool_input", toolUseId = "tool_use_id"
+        case notificationType = "notification_type", message
     }
 
     /// Create a copy with updated toolUseId
     init(sessionId: String, cwd: String, event: String, status: String, pid: Int?, tty: String?, tool: String?, toolInput: [String: AnyCodable]?, toolUseId: String?, notificationType: String?, message: String?) {
+        self.init(sessionId: sessionId, cwd: cwd, event: event, status: status, pid: pid, tty: tty, tool: tool, toolInput: toolInput, toolUseId: toolUseId, notificationType: notificationType, message: message, provider: nil)
+    }
+
+    init(sessionId: String, cwd: String, event: String, status: String, pid: Int?, tty: String?, tool: String?, toolInput: [String: AnyCodable]?, toolUseId: String?, notificationType: String?, message: String?, provider: AgentProvider?) {
         self.sessionId = sessionId
         self.cwd = cwd
         self.event = event
@@ -48,6 +51,12 @@ struct HookEvent: Codable, Sendable {
         self.toolUseId = toolUseId
         self.notificationType = notificationType
         self.message = message
+        self.provider = provider
+    }
+
+    /// Resolve provider with backward compatibility defaulting to claude
+    var resolvedProvider: AgentProvider {
+        provider ?? .claude
     }
 
     var sessionPhase: SessionPhase {
