@@ -5,7 +5,6 @@
 //  Minimal instances list matching Dynamic Island aesthetic
 //
 
-import AgentProvider
 import AppKit
 import Combine
 import SwiftUI
