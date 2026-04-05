@@ -11,18 +11,33 @@ struct HookInstaller {
 
     /// Install hook script and update settings.json on app launch
     static func installIfNeeded() {
-        let claudeDir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".claude")
-        let hooksDir = claudeDir.appendingPathComponent("hooks")
-        let pythonScript = hooksDir.appendingPathComponent("claude-island-state.py")
-        let settings = claudeDir.appendingPathComponent("settings.json")
+        // 安装 Claude Code hooks
+        installHooks(for: .claude)
+
+        // 为其他代理安装 hook，如果配置目录存在
+        for provider in AgentProvider.allCases where provider != .claude {
+            let providerDir = provider.configDirectory.expandingTildeInURL
+            if FileManager.default.fileExists(atPath: providerDir.path) {
+                installHooks(for: provider)
+            }
+        }
+    }
+
+    private static func installHooks(for provider: AgentProvider) {
+        let configDir = provider.configDirectory.expandingTildeInURL
+        let hooksDir = configDir.appendingPathComponent("hooks")
+        let pythonScript = hooksDir.appendingPathComponent(provider.hookScriptName)
+        let settings = configDir.appendingPathComponent("settings.json")
 
         try? FileManager.default.createDirectory(
             at: hooksDir,
             withIntermediateDirectories: true
         )
 
-        if let bundled = Bundle.main.url(forResource: "claude-island-state", withExtension: "py") {
+        if let bundled = Bundle.main.url(
+            forResource: provider.hookScriptName.dropLast(3),
+            withExtension: "py"
+        ) {
             try? FileManager.default.removeItem(at: pythonScript)
             try? FileManager.default.copyItem(at: bundled, to: pythonScript)
             try? FileManager.default.setAttributes(
@@ -31,10 +46,10 @@ struct HookInstaller {
             )
         }
 
-        updateSettings(at: settings)
+        updateSettings(at: settings, provider: provider)
     }
 
-    private static func updateSettings(at settingsURL: URL) {
+    private static func updateSettings(at settingsURL: URL, provider: AgentProvider) {
         var json: [String: Any] = [:]
         if let data = try? Data(contentsOf: settingsURL),
            let existing = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
@@ -42,7 +57,8 @@ struct HookInstaller {
         }
 
         let python = detectPython()
-        let command = "\(python) ~/.claude/hooks/claude-island-state.py"
+        let hookDirPath = provider.configDirectory.replacingOccurrences(of: "~", with: FileManager.default.homeDirectoryForCurrentUser.path)
+        let command = "\(python) \(hookDirPath)/hooks/\(provider.hookScriptName)"
         let hookEntry: [[String: Any]] = [["type": "command", "command": command]]
         let hookEntryWithTimeout: [[String: Any]] = [["type": "command", "command": command, "timeout": 86400]]
         let withMatcher: [[String: Any]] = [["matcher": "*", "hooks": hookEntry]]
@@ -74,7 +90,7 @@ struct HookInstaller {
                     if let entryHooks = entry["hooks"] as? [[String: Any]] {
                         return entryHooks.contains { h in
                             let cmd = h["command"] as? String ?? ""
-                            return cmd.contains("claude-island-state.py")
+                            return cmd.contains(provider.hookScriptName)
                         }
                     }
                     return false
@@ -100,9 +116,17 @@ struct HookInstaller {
 
     /// Check if hooks are currently installed
     static func isInstalled() -> Bool {
-        let claudeDir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".claude")
-        let settings = claudeDir.appendingPathComponent("settings.json")
+        for provider in AgentProvider.allCases {
+            if isInstalled(for: provider) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private static func isInstalled(for provider: AgentProvider) -> Bool {
+        let configDir = provider.configDirectory.expandingTildeInURL
+        let settings = configDir.appendingPathComponent("settings.json")
 
         guard let data = try? Data(contentsOf: settings),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -116,7 +140,7 @@ struct HookInstaller {
                     if let entryHooks = entry["hooks"] as? [[String: Any]] {
                         for hook in entryHooks {
                             if let cmd = hook["command"] as? String,
-                               cmd.contains("claude-island-state.py") {
+                               cmd.contains(provider.hookScriptName) {
                                 return true
                             }
                         }
@@ -129,11 +153,16 @@ struct HookInstaller {
 
     /// Uninstall hooks from settings.json and remove script
     static func uninstall() {
-        let claudeDir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".claude")
-        let hooksDir = claudeDir.appendingPathComponent("hooks")
-        let pythonScript = hooksDir.appendingPathComponent("claude-island-state.py")
-        let settings = claudeDir.appendingPathComponent("settings.json")
+        for provider in AgentProvider.allCases {
+            uninstallHooks(for: provider)
+        }
+    }
+
+    private static func uninstallHooks(for provider: AgentProvider) {
+        let configDir = provider.configDirectory.expandingTildeInURL
+        let hooksDir = configDir.appendingPathComponent("hooks")
+        let pythonScript = hooksDir.appendingPathComponent(provider.hookScriptName)
+        let settings = configDir.appendingPathComponent("settings.json")
 
         try? FileManager.default.removeItem(at: pythonScript)
 
@@ -149,7 +178,7 @@ struct HookInstaller {
                     if let entryHooks = entry["hooks"] as? [[String: Any]] {
                         return entryHooks.contains { hook in
                             let cmd = hook["command"] as? String ?? ""
-                            return cmd.contains("claude-island-state.py")
+                            return cmd.contains(provider.hookScriptName)
                         }
                     }
                     return false
@@ -193,5 +222,11 @@ struct HookInstaller {
         } catch {}
 
         return "python"
+    }
+}
+
+private extension String {
+    var expandingTildeInURL: URL {
+        URL(fileURLWithPath: (self as NSString).expandingTildeInPath)
     }
 }
