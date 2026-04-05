@@ -269,13 +269,12 @@ struct InstanceRow: View {
                     }
 
                     // Terminal jump button (when tty is available)
-                    if session.tty != nil {
+                    if let tty = session.tty {
                         Button {
-                            if let tty = session.tty, let terminal = TerminalDetector.shared.detectRunningTerminal(for: tty) {
+                            if let terminal = TerminalDetector.shared.detectRunningTerminal(for: tty) {
                                 TerminalJumpService.shared.jumpToTTY(tty, terminal: terminal)
-                            } else if let providerBundleId = TerminalDetector.shared.detectRunningTerminal(for: session.tty!)?.bundleId,
-                                      let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: providerBundleId) {
-                                NSWorkspace.shared.openApplication(at: url, configuration: [:])
+                            } else {
+                                print("Could not detect terminal for TTY: \(tty)")
                             }
                         } label: {
                             Image(systemName: "arrow.forward.to.rectangle")
