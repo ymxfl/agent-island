@@ -51,4 +51,15 @@ enum AgentProvider: String, Codable, CaseIterable, Sendable {
         case .opencode: return "~/.opencode"
         }
     }
+
+    /// 短标签名（用于灵动岛紧凑显示）
+    var shortName: String {
+        switch self {
+        case .claude: return "Claude"
+        case .gemini: return "Gemini"
+        case .codex: return "Codex"
+        case .cursor: return "Cursor"
+        case .opencode: return "OpenCode"
+        }
+    }
 }

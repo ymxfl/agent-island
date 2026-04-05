@@ -272,10 +272,70 @@ struct NotchView: View {
                     .fill(.clear)
                     .frame(width: closedNotchSize.width - 20)
             } else {
-                // Closed with activity: black spacer (with optional bounce)
-                Rectangle()
-                    .fill(.black)
+                // Closed with activity: show most recent session
+                if let mostRecentSession = sessionMonitor.instances.sorted(by: { $0.lastActivity > $1.lastActivity }).first {
+                    HStack(spacing: 8) {
+                        // Provider icon - Claude uses special crab icon
+                        if mostRecentSession.provider == .claude {
+                            ClaudeCrabIcon(size: 24, color: TerminalColors.green, animateLegs: isProcessing)
+                        } else {
+                            Image(systemName: mostRecentSession.provider.iconName)
+                                .font(.system(size: 16))
+                                .foregroundColor(mostRecentSession.provider.tintColor)
+                        }
+
+                        // Directory and description
+                        if !mostRecentSession.displayTitle.isEmpty {
+                            Text(mostRecentSession.displayTitle)
+                                .font(.system(size: 20, weight: .medium))
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+
+                        Spacer()
+
+                        // Provider tag
+                        Text(mostRecentSession.provider.shortName)
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(.white.opacity(0.7))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(.white.opacity(0.15))
+                            .cornerRadius(8)
+
+                        // Terminal tag (if tty available)
+                        if let tty = mostRecentSession.tty,
+                           let terminal = TerminalDetector.shared.detectRunningTerminal(for: tty) {
+                            Text(terminal.shortName)
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundColor(.white.opacity(0.7))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(.white.opacity(0.15))
+                                .cornerRadius(8)
+                        }
+
+                        // Clear button
+                        Button {
+                            Task {
+                                await SessionStore.shared.clearAll()
+                            }
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.system(size: 14))
+                                .foregroundColor(.white.opacity(0.6))
+                                .padding(4)
+                        }
+                        .buttonStyle(.plain)
+                    }
                     .frame(width: closedNotchSize.width - cornerRadiusInsets.closed.top + (isBouncing ? 16 : 0))
+                } else {
+                    // Fallback: black spacer
+                    Rectangle()
+                        .fill(.black)
+                        .frame(width: closedNotchSize.width - cornerRadiusInsets.closed.top + (isBouncing ? 16 : 0))
+                }
             }
 
             // Right side - spinner when processing/pending, checkmark when waiting for input

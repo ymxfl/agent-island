@@ -988,4 +988,11 @@ actor SessionStore {
     func allSessions() -> [SessionState] {
         Array(sessions.values)
     }
+
+    /// Clear all sessions
+    func clearAll() {
+        sessions.removeAll()
+        pendingSyncs.removeAll()
+        publishState()
+    }
 }

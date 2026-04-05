@@ -29,6 +29,20 @@ enum TerminalApp: String, CaseIterable {
             $0.bundleIdentifier == bundleId
         }
     }
+
+    /// 短标签名（用于灵动岛紧凑显示）
+    var shortName: String {
+        switch self {
+        case .iTerm2: return "iTerm"
+        case .terminal: return "Terminal"
+        case .ghostty: return "Ghostty"
+        case .warp: return "Warp"
+        case .alacritty: return "Alacritty"
+        case .kitty: return "Kitty"
+        case .vsCode: return "VS Code"
+        case .cursor: return "Cursor"
+        }
+    }
 }
 
 class TerminalDetector: Sendable {
