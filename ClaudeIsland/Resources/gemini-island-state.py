@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 Gemini CLI Island Hook
-- 通过 Unix socket 发送会话状态到 ClaudeIsland.app
-- 权限请求时，等待应用的用户决策
+- Sends session state to ClaudeIsland.app via Unix socket
+- For PermissionRequest: waits for user decision from the app
 """
 import json
 import os
@@ -10,17 +10,17 @@ import socket
 import sys
 
 SOCKET_PATH = "/tmp/claude-island.sock"
-TIMEOUT_SECONDS = 300  # 5 分钟等待权限决策
+TIMEOUT_SECONDS = 300  # 5 minutes for permission decisions
 
 
 def get_tty():
-    """获取 Gemini 进程的 TTY"""
+    """Get the TTY of the Gemini process (parent)"""
     import subprocess
 
-    # 获取父 PID (Gemini 进程)
+    # Get parent PID (Gemini process)
     ppid = os.getppid()
 
-    # 尝试从 ps 命令获取父进程的 TTY
+    # Try to get TTY from ps command for the parent process
     try:
         result = subprocess.run(
             ["ps", "-p", str(ppid), "-o", "tty="],
@@ -30,14 +30,14 @@ def get_tty():
         )
         tty = result.stdout.strip()
         if tty and tty != "??" and tty != "-":
-            # ps 返回 "ttys001"，我们需要 "/dev/ttys001"
+            # ps returns just "ttys001", we need "/dev/ttys001"
             if not tty.startswith("/dev/"):
                 tty = "/dev/" + tty
             return tty
     except Exception:
         pass
 
-    # 后备方案：尝试当前进程的 stdin/stdout
+    # Fallback: try current process stdin/stdout
     try:
         return os.ttyname(sys.stdin.fileno())
     except (OSError, AttributeError):
@@ -50,14 +50,14 @@ def get_tty():
 
 
 def send_event(state):
-    """发送事件到应用，如果需要返回响应"""
+    """Send event to app, return response if any"""
     try:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.settimeout(TIMEOUT_SECONDS)
         sock.connect(SOCKET_PATH)
         sock.sendall(json.dumps(state).encode())
 
-        # 权限请求需要等待响应
+        # For permission requests, wait for response
         if state.get("status") == "waiting_for_approval":
             response = sock.recv(4096)
             sock.close()
@@ -82,11 +82,11 @@ def main():
     cwd = data.get("cwd", "")
     tool_input = data.get("tool_input", {})
 
-    # 获取进程信息
+    # Get process info
     gemini_pid = os.getppid()
     tty = get_tty()
 
-    # 构建状态对象
+    # Build state object
     state = {
         "session_id": session_id,
         "cwd": cwd,
@@ -96,16 +96,16 @@ def main():
         "provider": "gemini",
     }
 
-    # 映射事件到状态
+    # Map events to status
     if event == "UserPromptSubmit":
-        # 用户刚发送消息 - Gemini 正在处理中
+        # User just sent a message - Gemini is now processing
         state["status"] = "processing"
 
     elif event == "PreToolUse":
         state["status"] = "running_tool"
         state["tool"] = data.get("tool_name")
         state["tool_input"] = tool_input
-        # 发送 tool_use_id 到 Swift 缓存
+        # Send tool_use_id to Swift for caching
         tool_use_id_from_event = data.get("tool_use_id")
         if tool_use_id_from_event:
             state["tool_use_id"] = tool_use_id_from_event
@@ -114,16 +114,19 @@ def main():
         state["status"] = "processing"
         state["tool"] = data.get("tool_name")
         state["tool_input"] = tool_input
+        # Send tool_use_id so Swift can cancel the specific pending permission
         tool_use_id_from_event = data.get("tool_use_id")
         if tool_use_id_from_event:
             state["tool_use_id"] = tool_use_id_from_event
 
     elif event == "PermissionRequest":
+        # This is where we can control the permission
         state["status"] = "waiting_for_approval"
         state["tool"] = data.get("tool_name")
         state["tool_input"] = tool_input
+        # tool_use_id lookup handled by Swift-side cache from PreToolUse
 
-        # 发送到应用等待决策
+        # Send to app and wait for decision
         response = send_event(state)
 
         if response:
@@ -153,11 +156,15 @@ def main():
                 print(json.dumps(output))
                 sys.exit(0)
 
+        # No response or "ask" - let Claude Code show its normal UI
         sys.exit(0)
 
     elif event == "Notification":
         notification_type = data.get("notification_type")
-        if notification_type == "idle_prompt":
+        # Skip permission_prompt - PermissionRequest hook handles this with better info
+        if notification_type == "permission_prompt":
+            sys.exit(0)
+        elif notification_type == "idle_prompt":
             state["status"] = "waiting_for_input"
         else:
             state["status"] = "notification"
@@ -168,9 +175,11 @@ def main():
         state["status"] = "waiting_for_input"
 
     elif event == "SubagentStop":
+        # SubagentStop fires when a subagent completes - usually means back to waiting
         state["status"] = "waiting_for_input"
 
     elif event == "SessionStart":
+        # New session starts waiting for user input
         state["status"] = "waiting_for_input"
 
     elif event == "SessionEnd":
@@ -182,7 +191,7 @@ def main():
     else:
         state["status"] = "unknown"
 
-    # 发送到 socket（非权限事件即发即忘）
+    # Send to socket (fire and forget for non-permission events)
     send_event(state)
 
 
