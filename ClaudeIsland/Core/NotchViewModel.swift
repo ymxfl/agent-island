@@ -244,6 +244,23 @@ class NotchViewModel: ObservableObject {
                 return
             }
             contentType = .chat(chatSession)
+            return
+        }
+
+        // No saved chat session - if there are any sessions, open the most recent one by default
+        Task {
+            let allSessions = await SessionStore.shared.allSessions()
+            guard !allSessions.isEmpty else {
+                return
+            }
+            // Sort by last activity, most recent first
+            let sorted = allSessions.sorted { $0.lastActivity > $1.lastActivity }
+            if let mostRecent = sorted.first {
+                await MainActor.run {
+                    contentType = .chat(mostRecent)
+                    currentChatSession = mostRecent
+                }
+            }
         }
     }
 
