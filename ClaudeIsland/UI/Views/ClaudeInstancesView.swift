@@ -5,6 +5,8 @@
 //  Minimal instances list matching Dynamic Island aesthetic
 //
 
+import AgentProvider
+import AppKit
 import Combine
 import SwiftUI
 
@@ -151,6 +153,9 @@ struct InstanceRow: View {
             stateIndicator
                 .frame(width: 14)
 
+            // Provider indicator
+            ProviderIndicator(provider: session.provider)
+
             // Text content
             VStack(alignment: .leading, spacing: 2) {
                 Text(session.displayTitle)
@@ -262,6 +267,24 @@ struct InstanceRow: View {
                         IconButton(icon: "eye") {
                             onFocus()
                         }
+                    }
+
+                    // Terminal jump button (when tty is available)
+                    if session.tty != nil {
+                        Button {
+                            if let tty = session.tty, let terminal = TerminalDetector.shared.detectRunningTerminal(for: tty) {
+                                TerminalJumpService.shared.jumpToTTY(tty, terminal: terminal)
+                            } else if let providerBundleId = TerminalDetector.shared.detectRunningTerminal(for: session.tty!)?.bundleId,
+                                      let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: providerBundleId) {
+                                NSWorkspace.shared.openApplication(at: url, configuration: [:])
+                            }
+                        } label: {
+                            Image(systemName: "arrow.forward.to.rectangle")
+                                .font(.system(size: 10))
+                                .foregroundColor(.white.opacity(0.6))
+                                .padding(4)
+                        }
+                        .buttonStyle(.plain)
                     }
 
                     // Archive button - only for idle or completed sessions
