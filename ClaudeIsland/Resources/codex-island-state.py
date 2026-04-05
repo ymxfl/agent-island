@@ -120,7 +120,7 @@ def main():
             state["tool_use_id"] = tool_use_id_from_event
 
     elif event == "PermissionRequest":
-        # This is的地方我们可以控制权限
+        # This is where we can control the permission
         state["status"] = "waiting_for_approval"
         state["tool"] = data.get("tool_name")
         state["tool_input"] = tool_input
@@ -136,7 +136,7 @@ def main():
             if decision == "allow":
                 # Output JSON to approve
                 output = {
-                    "hookSpecific:Output": {
+                    "hookSpecificOutput": {
                         "hookEventName": "PermissionRequest",
                         "decision": {"behavior": "allow"},
                     }
