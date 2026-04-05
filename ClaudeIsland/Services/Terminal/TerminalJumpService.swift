@@ -53,7 +53,7 @@ class TerminalJumpService: Sendable {
 
     private func activateTerminal(_ terminal: TerminalApp) {
         if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: terminal.bundleId) {
-            NSWorkspace.shared.openApplication(at: url, configuration: [:])
+            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
         }
     }
 
