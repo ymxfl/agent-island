@@ -25,128 +25,130 @@ struct NotchMenuView: View {
     @State private var languageRefresh = false
 
     var body: some View {
-        VStack(spacing: 4) {
-            // Back button
-            MenuRow(
-                icon: "chevron.left",
-                label: L10n.back
-            ) {
-                viewModel.toggleMenu()
-            }
-
-            Divider()
-                .background(Color.white.opacity(0.08))
-                .padding(.vertical, 4)
-
-            // Appearance settings
-            ScreenPickerRow(screenSelector: screenSelector)
-            SoundPickerRow(soundSelector: soundSelector)
-            LanguageRow()
-
-            Divider()
-                .background(Color.white.opacity(0.08))
-                .padding(.vertical, 4)
-
-            // System settings
-            MenuToggleRow(
-                icon: "power",
-                label: L10n.launchAtLogin,
-                isOn: launchAtLogin
-            ) {
-                do {
-                    if launchAtLogin {
-                        try SMAppService.mainApp.unregister()
-                        launchAtLogin = false
-                    } else {
-                        try SMAppService.mainApp.register()
-                        launchAtLogin = true
-                    }
-                } catch {
-                    print("Failed to toggle launch at login: \(error)")
-                }
-            }
-
-            MenuToggleRow(
-                icon: "arrow.triangle.2.circlepath",
-                label: L10n.hooks,
-                isOn: hooksInstalled
-            ) {
-                if hooksInstalled {
-                    HookInstaller.uninstall()
-                    hooksInstalled = false
-                } else {
-                    HookInstaller.installIfNeeded()
-                    hooksInstalled = true
-                }
-            }
-
-            AccessibilityRow(isEnabled: AXIsProcessTrusted())
-
-            MenuToggleRow(
-                icon: "checkmark.shield",
-                label: L10n.autoApprove,
-                isOn: autoApproveEnabled
-            ) {
-                AppSettings.isAutoApproveEnabled.toggle()
-                autoApproveEnabled = AppSettings.isAutoApproveEnabled
-            }
-
-            Divider()
-                .background(Color.white.opacity(0.08))
-                .padding(.vertical, 4)
-
-            Text(L10n.enabledAgents)
-                .font(.system(size: 11))
-                .foregroundColor(.white.opacity(0.5))
-                .padding(.horizontal, 12)
-
-            ForEach(AgentProvider.allCases, id: \.self) { provider in
-                MenuToggleRow(
-                    icon: provider.iconName,
-                    label: provider.rawValue,
-                    isOn: settingsStore.isEnabled(provider)
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 4) {
+                // Back button
+                MenuRow(
+                    icon: "chevron.left",
+                    label: L10n.back
                 ) {
-                    settingsStore.toggle(provider)
-                    if settingsStore.isEnabled(provider) {
-                        HookInstaller.installHooks(for: provider)
+                    viewModel.toggleMenu()
+                }
+
+                Divider()
+                    .background(Color.white.opacity(0.08))
+                    .padding(.vertical, 4)
+
+                // Appearance settings
+                ScreenPickerRow(screenSelector: screenSelector)
+                SoundPickerRow(soundSelector: soundSelector)
+                LanguageRow()
+
+                Divider()
+                    .background(Color.white.opacity(0.08))
+                    .padding(.vertical, 4)
+
+                // System settings
+                MenuToggleRow(
+                    icon: "power",
+                    label: L10n.launchAtLogin,
+                    isOn: launchAtLogin
+                ) {
+                    do {
+                        if launchAtLogin {
+                            try SMAppService.mainApp.unregister()
+                            launchAtLogin = false
+                        } else {
+                            try SMAppService.mainApp.register()
+                            launchAtLogin = true
+                        }
+                    } catch {
+                        print("Failed to toggle launch at login: \(error)")
+                    }
+                }
+
+                MenuToggleRow(
+                    icon: "arrow.triangle.2.circlepath",
+                    label: L10n.hooks,
+                    isOn: hooksInstalled
+                ) {
+                    if hooksInstalled {
+                        HookInstaller.uninstall()
+                        hooksInstalled = false
                     } else {
-                        HookInstaller.uninstallHooks(for: provider)
+                        HookInstaller.installIfNeeded()
+                        hooksInstalled = true
+                    }
+                }
+
+                AccessibilityRow(isEnabled: AXIsProcessTrusted())
+
+                MenuToggleRow(
+                    icon: "checkmark.shield",
+                    label: L10n.autoApprove,
+                    isOn: autoApproveEnabled
+                ) {
+                    AppSettings.isAutoApproveEnabled.toggle()
+                    autoApproveEnabled = AppSettings.isAutoApproveEnabled
+                }
+
+                Divider()
+                    .background(Color.white.opacity(0.08))
+                    .padding(.vertical, 4)
+
+                Text(L10n.enabledAgents)
+                    .font(.system(size: 11))
+                    .foregroundColor(.white.opacity(0.5))
+                    .padding(.horizontal, 12)
+
+                ForEach(AgentProvider.allCases, id: \.self) { provider in
+                    MenuToggleRow(
+                        icon: provider.iconName,
+                        label: provider.rawValue,
+                        isOn: settingsStore.isEnabled(provider)
+                    ) {
+                        settingsStore.toggle(provider)
+                        if settingsStore.isEnabled(provider) {
+                            HookInstaller.installHooks(for: provider)
+                        } else {
+                            HookInstaller.uninstallHooks(for: provider)
+                        }
+                    }
+                }
+
+                Divider()
+                    .background(Color.white.opacity(0.08))
+                    .padding(.vertical, 4)
+
+                // About
+                UpdateRow(updateManager: updateManager)
+
+                MenuRow(
+                    icon: "star",
+                    label: L10n.starOnGithub
+                ) {
+                    if let url = URL(string: "https://github.com/farouqaldori/claude-island") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+
+                Divider()
+                    .background(Color.white.opacity(0.08))
+                    .padding(.vertical, 4)
+
+                MenuRow(
+                    icon: "xmark.circle",
+                    label: L10n.quit,
+                    isDestructive: true
+                ) {
+                    DispatchQueue.main.async {
+                        NSApplication.shared.terminate(nil)
                     }
                 }
             }
-
-            Divider()
-                .background(Color.white.opacity(0.08))
-                .padding(.vertical, 4)
-
-            // About
-            UpdateRow(updateManager: updateManager)
-
-            MenuRow(
-                icon: "star",
-                label: L10n.starOnGithub
-            ) {
-                if let url = URL(string: "https://github.com/farouqaldori/claude-island") {
-                    NSWorkspace.shared.open(url)
-                }
-            }
-
-            Divider()
-                .background(Color.white.opacity(0.08))
-                .padding(.vertical, 4)
-
-            MenuRow(
-                icon: "xmark.circle",
-                label: L10n.quit,
-                isDestructive: true
-            ) {
-                DispatchQueue.main.async {
-                    NSApplication.shared.terminate(nil)
-                }
-            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 8)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear {
             refreshStates()

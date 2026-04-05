@@ -233,20 +233,12 @@ class NotchViewModel: ObservableObject {
         openReason = reason
         status = .opened
 
-        // Don't restore chat on notification - show instances list instead
-        if reason == .notification {
-            currentChatSession = nil
+        // Always show instances list when opening the island
+        currentChatSession = nil
+        if case .instances = contentType {
             return
         }
-
-        // Restore chat session if we had one open before
-        if let chatSession = currentChatSession {
-            // Avoid unnecessary updates if already showing this chat
-            if case .chat(let current) = contentType, current.sessionId == chatSession.sessionId {
-                return
-            }
-            contentType = .chat(chatSession)
-        }
+        contentType = .instances
     }
 
     func notchClose() {

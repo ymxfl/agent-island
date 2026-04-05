@@ -464,25 +464,6 @@ struct NotchView: View {
             if viewModel.openReason == .click || viewModel.openReason == .hover {
                 waitingForInputTimestamps.removeAll()
             }
-
-            // Auto-open most recent session if:
-            // 1. No saved chat session
-            // 2. There are existing sessions
-            // 3. Currently showing instances list (default when opening)
-            if case .instances = viewModel.contentType,
-               sessionMonitor.instances.count == 1,
-               let singleSession = sessionMonitor.instances.first {
-                // If only one session exists, always open it
-                viewModel.showChat(for: singleSession)
-            } else if case .instances = viewModel.contentType,
-                      !sessionMonitor.instances.isEmpty,
-                      viewModel.openReason != .notification {
-                // Multiple sessions - open most recently active one
-                let sorted = sessionMonitor.instances.sorted { $0.lastActivity > $1.lastActivity }
-                if let mostRecent = sorted.first {
-                    viewModel.showChat(for: mostRecent)
-                }
-            }
         case .closed:
             // Don't hide on non-notched devices - users need a visible target
             guard viewModel.hasPhysicalNotch else { return }
