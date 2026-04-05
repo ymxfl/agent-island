@@ -196,6 +196,8 @@ struct ChatView: View {
                     .foregroundColor(.white.opacity(isHeaderHovered ? 1.0 : 0.85))
                     .lineLimit(1)
 
+                ProviderIndicator(session.provider, showLabel: true)
+
                 Spacer()
             }
             .padding(.horizontal, 12)
