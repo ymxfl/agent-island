@@ -71,10 +71,12 @@ class NotchViewModel: ObservableObject {
                 height: 580
             )
         case .menu:
-            // Compact size for settings menu
+            // Menu has ~15 rows + dividers + agents list; actual content is ~700pt tall.
+            // The height must cover the full content so hit-testing and outside-click
+            // detection work for bottom items like Quit.
             return CGSize(
                 width: min(screenRect.width * 0.4, 480),
-                height: 420 + screenSelector.expandedPickerHeight + soundSelector.expandedPickerHeight
+                height: 720 + screenSelector.expandedPickerHeight + soundSelector.expandedPickerHeight
             )
         case .instances:
             return CGSize(

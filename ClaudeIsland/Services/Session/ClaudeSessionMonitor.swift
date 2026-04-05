@@ -125,6 +125,14 @@ class ClaudeSessionMonitor: ObservableObject {
     private func updateFromSessions(_ sessions: [SessionState]) {
         instances = sessions
         pendingInstances = sessions.filter { $0.needsAttention }
+
+        if AppSettings.isAutoApproveEnabled {
+            for session in sessions where session.phase.isWaitingForApproval {
+                if let toolName = session.pendingToolName, toolName != "AskUserQuestion" {
+                    approvePermission(sessionId: session.sessionId)
+                }
+            }
+        }
     }
 
     // MARK: - History Loading (for UI)

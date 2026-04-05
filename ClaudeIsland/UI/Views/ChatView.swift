@@ -24,6 +24,8 @@ struct ChatView: View {
     @State private var newMessageCount: Int = 0
     @State private var previousHistoryCount: Int = 0
     @State private var isBottomVisible: Bool = true
+    @State private var languageRefresh = false
+    @State private var terminalSupportsMessaging = false
     @FocusState private var isInputFocused: Bool
 
     init(sessionId: String, initialSession: SessionState, sessionMonitor: ClaudeSessionMonitor, viewModel: NotchViewModel) {
@@ -149,6 +151,7 @@ struct ChatView: View {
                 // Check if permission was just accepted (transition from waitingForApproval to processing)
                 let wasWaiting = isWaitingForApproval
                 session = updated
+                updateTerminalMessagingSupport()
                 let isNowProcessing = updated.phase == .processing
 
                 if wasWaiting && isNowProcessing {
@@ -160,7 +163,7 @@ struct ChatView: View {
             }
         }
         .onChange(of: canSendMessages) { _, canSend in
-            // Auto-focus input when tmux messaging becomes available
+            // Auto-focus input when session messaging becomes available
             if canSend && !isInputFocused {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     isInputFocused = true
@@ -168,6 +171,7 @@ struct ChatView: View {
             }
         }
         .onAppear {
+            updateTerminalMessagingSupport()
             // Auto-focus input when chat opens and tmux messaging is available
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 if canSendMessages {
@@ -175,6 +179,13 @@ struct ChatView: View {
                 }
             }
         }
+        .onChange(of: session.tty) { _, _ in
+            updateTerminalMessagingSupport()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .languageDidChange)) { _ in
+            languageRefresh.toggle()
+        }
+        .id(languageRefresh)
     }
 
     // MARK: - Header
@@ -372,14 +383,15 @@ struct ChatView: View {
 
     // MARK: - Input Bar
 
-    /// Can send messages only if session is in tmux
+    /// Can send via tmux, or via TerminalMessageService for supported terminals
     private var canSendMessages: Bool {
-        session.isInTmux && session.tty != nil
+        if session.isInTmux && session.tty != nil { return true }
+        return terminalSupportsMessaging
     }
 
     private var inputBar: some View {
         HStack(spacing: 10) {
-            TextField(canSendMessages ? "Message Claude..." : "Open Claude Code in tmux to enable messaging", text: $inputText)
+            TextField(canSendMessages ? L10n.typeMessage : L10n.tmuxRequired, text: $inputText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .foregroundColor(canSendMessages ? .white : .white.opacity(0.4))
@@ -481,6 +493,15 @@ struct ChatView: View {
         sessionMonitor.denyPermission(sessionId: sessionId, reason: nil)
     }
 
+    private func updateTerminalMessagingSupport() {
+        if let tty = session.tty,
+           let terminal = TerminalDetector.shared.detectRunningTerminal(for: tty) {
+            terminalSupportsMessaging = TerminalMessageService.shared.supportsMessaging(terminal)
+        } else {
+            terminalSupportsMessaging = false
+        }
+    }
+
     private func sendMessage() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
@@ -498,11 +519,16 @@ struct ChatView: View {
     }
 
     private func sendToSession(_ text: String) async {
-        guard session.isInTmux else { return }
         guard let tty = session.tty else { return }
 
-        if let target = await findTmuxTarget(tty: tty) {
-            _ = await ToolApprovalHandler.shared.sendMessage(text, to: target)
+        if session.isInTmux, let target = await findTmuxTarget(tty: tty) {
+            let sent = await ToolApprovalHandler.shared.sendMessage(text, to: target)
+            if sent { return }
+        }
+
+        if let terminal = TerminalDetector.shared.detectRunningTerminal(for: tty) {
+            let sent = await TerminalMessageService.shared.sendText(text, to: tty, terminal: terminal)
+            if sent { return }
         }
     }
 
@@ -1015,7 +1041,7 @@ struct ChatInteractivePromptBar: View {
                 Text(MCPToolFormatter.formatToolName("AskUserQuestion"))
                     .font(.system(size: 12, weight: .medium, design: .monospaced))
                     .foregroundColor(TerminalColors.amber)
-                Text("Claude Code needs your input")
+                Text(L10n.needsYourInput)
                     .font(.system(size: 11))
                     .foregroundColor(.white.opacity(0.5))
                     .lineLimit(1)
@@ -1034,7 +1060,7 @@ struct ChatInteractivePromptBar: View {
                 HStack(spacing: 4) {
                     Image(systemName: "terminal")
                         .font(.system(size: 11, weight: .medium))
-                    Text("Terminal")
+                    Text(L10n.terminal)
                         .font(.system(size: 13, weight: .medium))
                 }
                 .foregroundColor(isInTmux ? .black : .white.opacity(0.4))
@@ -1098,7 +1124,7 @@ struct ChatApprovalBar: View {
             Button {
                 onDeny()
             } label: {
-                Text("Deny")
+                Text(L10n.deny)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(.white.opacity(0.7))
                     .padding(.horizontal, 16)
@@ -1114,7 +1140,7 @@ struct ChatApprovalBar: View {
             Button {
                 onApprove()
             } label: {
-                Text("Allow")
+                Text(L10n.allow)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(.black)
                     .padding(.horizontal, 16)

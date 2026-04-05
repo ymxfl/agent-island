@@ -5,6 +5,7 @@
 //  App settings manager using UserDefaults
 //
 
+import Combine
 import Foundation
 
 /// Available notification sounds
@@ -89,5 +90,79 @@ extension AppSettings {
             providers.insert(provider)
         }
         enabledProviders = providers
+    }
+}
+
+// MARK: - Language settings
+
+enum AppLanguage: String, CaseIterable {
+    case english = "en"
+    case chinese = "zh-Hans"
+
+    var displayName: String {
+        switch self {
+        case .english: return "English"
+        case .chinese: return "中文"
+        }
+    }
+}
+
+extension AppSettings {
+    private static let languageKey = "appLanguage"
+
+    static var language: AppLanguage {
+        get {
+            guard let raw = defaults.string(forKey: languageKey),
+                  let lang = AppLanguage(rawValue: raw) else {
+                return .english
+            }
+            return lang
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: languageKey)
+            NotificationCenter.default.post(name: .languageDidChange, object: nil)
+        }
+    }
+}
+
+extension Notification.Name {
+    static let languageDidChange = Notification.Name("com.agentisland.languageDidChange")
+}
+
+// MARK: - Auto-approve settings
+
+extension AppSettings {
+    private static let autoApproveKey = "autoApproveEnabled"
+
+    static var isAutoApproveEnabled: Bool {
+        get { defaults.bool(forKey: autoApproveKey) }
+        set { defaults.set(newValue, forKey: autoApproveKey) }
+    }
+}
+
+@MainActor
+class SettingsStore: ObservableObject {
+    static let shared = SettingsStore()
+
+    @Published var enabledProviders: Set<AgentProvider> = AppSettings.enabledProviders {
+        didSet { AppSettings.enabledProviders = enabledProviders }
+    }
+
+    @Published var isAutoApproveEnabled: Bool = AppSettings.isAutoApproveEnabled {
+        didSet { AppSettings.isAutoApproveEnabled = isAutoApproveEnabled }
+    }
+
+    private init() {}
+
+    func isEnabled(_ provider: AgentProvider) -> Bool {
+        enabledProviders.contains(provider)
+    }
+
+    func toggle(_ provider: AgentProvider) {
+        if enabledProviders.contains(provider) {
+            enabledProviders.remove(provider)
+        } else {
+            enabledProviders.insert(provider)
+        }
     }
 }

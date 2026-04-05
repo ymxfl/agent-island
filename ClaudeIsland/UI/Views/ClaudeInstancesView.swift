@@ -12,24 +12,31 @@ import SwiftUI
 struct ClaudeInstancesView: View {
     @ObservedObject var sessionMonitor: ClaudeSessionMonitor
     @ObservedObject var viewModel: NotchViewModel
+    @State private var languageRefresh = false
 
     var body: some View {
-        if sessionMonitor.instances.isEmpty {
-            emptyState
-        } else {
-            instancesList
+        Group {
+            if sessionMonitor.instances.isEmpty {
+                emptyState
+            } else {
+                instancesList
+            }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .languageDidChange)) { _ in
+            languageRefresh.toggle()
+        }
+        .id(languageRefresh)
     }
 
     // MARK: - Empty State
 
     private var emptyState: some View {
         VStack(spacing: 8) {
-            Text("No sessions")
+            Text(L10n.noSessions)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(.white.opacity(0.4))
 
-            Text("Run claude in terminal")
+            Text(L10n.runInTerminal)
                 .font(.system(size: 11))
                 .foregroundColor(.white.opacity(0.25))
         }
@@ -170,7 +177,7 @@ struct InstanceRow: View {
                             .font(.system(size: 11, weight: .medium, design: .monospaced))
                             .foregroundColor(TerminalColors.amber.opacity(0.9))
                         if isInteractiveTool {
-                            Text("Needs your input")
+                            Text(L10n.needsYourInput)
                                 .font(.system(size: 11))
                                 .foregroundColor(.white.opacity(0.5))
                                 .lineLimit(1)
@@ -201,7 +208,7 @@ struct InstanceRow: View {
                     case "user":
                         // User message - prefix with "You:"
                         HStack(spacing: 4) {
-                            Text("You:")
+                            Text(L10n.you)
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundColor(.white.opacity(0.5))
                             if let msg = session.lastMessage {
@@ -230,6 +237,8 @@ struct InstanceRow: View {
 
             Spacer(minLength: 0)
 
+            providerAndTerminalTags
+
             // Action icons or approval buttons
             if isWaitingForApproval && isInteractiveTool {
                 // Interactive tools like AskUserQuestion - show chat + terminal buttons
@@ -245,17 +254,53 @@ struct InstanceRow: View {
                             onTap: { onFocus() }
                         )
                     }
+
+                    // Terminal jump button (when tty is available)
+                    if let tty = session.tty {
+                        Button {
+                            if let terminal = TerminalDetector.shared.detectRunningTerminal(for: tty) {
+                                TerminalJumpService.shared.jumpToTTY(tty, terminal: terminal)
+                            } else {
+                                print("Could not detect terminal for TTY: \(tty)")
+                            }
+                        } label: {
+                            Image(systemName: "arrow.forward.to.rectangle")
+                                .font(.system(size: 10))
+                                .foregroundColor(.white.opacity(0.6))
+                                .padding(4)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))
             } else if isWaitingForApproval {
-                InlineApprovalButtons(
-                    onChat: onChat,
-                    onApprove: onApprove,
-                    onReject: onReject
-                )
+                HStack(spacing: 4) {
+                    InlineApprovalButtons(
+                        onChat: onChat,
+                        onApprove: onApprove,
+                        onReject: onReject
+                    )
+
+                    // Terminal jump button (when tty is available) - even when waiting for approval
+                    if let tty = session.tty {
+                        Button {
+                            if let terminal = TerminalDetector.shared.detectRunningTerminal(for: tty) {
+                                TerminalJumpService.shared.jumpToTTY(tty, terminal: terminal)
+                            } else {
+                                print("Could not detect terminal for TTY: \(tty)")
+                            }
+                        } label: {
+                            Image(systemName: "arrow.forward.to.rectangle")
+                                .font(.system(size: 10))
+                                .foregroundColor(.white.opacity(0.6))
+                                .padding(2)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))
             } else {
-                HStack(spacing: 8) {
+                HStack(spacing: 4) {
                     // Chat icon - always show
                     IconButton(icon: "bubble.left") {
                         onChat()
@@ -280,7 +325,7 @@ struct InstanceRow: View {
                             Image(systemName: "arrow.forward.to.rectangle")
                                 .font(.system(size: 10))
                                 .foregroundColor(.white.opacity(0.6))
-                                .padding(4)
+                                .padding(2)
                         }
                         .buttonStyle(.plain)
                     }
@@ -310,6 +355,33 @@ struct InstanceRow: View {
         .onHover { isHovered = $0 }
         .task {
             isYabaiAvailable = await WindowFinder.shared.isYabaiAvailable()
+        }
+    }
+
+    @ViewBuilder
+    private var providerAndTerminalTags: some View {
+        Text(session.provider.shortName)
+            .font(.system(size: 9, weight: .medium))
+            .foregroundColor(session.provider.tintColor)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(session.provider.tintColor.opacity(0.15))
+            .cornerRadius(4)
+
+        if let tty = session.tty,
+           let terminal = TerminalDetector.shared.detectRunningTerminal(for: tty) {
+            Button {
+                TerminalJumpService.shared.jumpToTTY(tty, terminal: terminal)
+            } label: {
+                Text(terminal.shortName)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(.white.opacity(0.6))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(.white.opacity(0.1))
+                    .cornerRadius(4)
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -367,7 +439,7 @@ struct InlineApprovalButtons: View {
             Button {
                 onReject()
             } label: {
-                Text("Deny")
+                Text(L10n.deny)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.white.opacity(0.6))
                     .padding(.horizontal, 10)
@@ -382,7 +454,7 @@ struct InlineApprovalButtons: View {
             Button {
                 onApprove()
             } label: {
-                Text("Allow")
+                Text(L10n.allow)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.black)
                     .padding(.horizontal, 10)
@@ -449,7 +521,7 @@ struct CompactTerminalButton: View {
             HStack(spacing: 2) {
                 Image(systemName: "terminal")
                     .font(.system(size: 8, weight: .medium))
-                Text("Go to Terminal")
+                Text(L10n.goToTerminal)
                     .font(.system(size: 10, weight: .medium))
             }
             .foregroundColor(isEnabled ? .white.opacity(0.9) : .white.opacity(0.3))
@@ -477,7 +549,7 @@ struct TerminalButton: View {
             HStack(spacing: 3) {
                 Image(systemName: "terminal")
                     .font(.system(size: 9, weight: .medium))
-                Text("Terminal")
+                Text(L10n.terminal)
                     .font(.system(size: 11, weight: .medium))
             }
             .foregroundColor(isEnabled ? .black : .white.opacity(0.4))

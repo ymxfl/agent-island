@@ -33,7 +33,7 @@ struct ScreenPickerRow: View {
                         .foregroundColor(textColor)
                         .frame(width: 16)
 
-                    Text("Screen")
+                    Text(L10n.screen)
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(textColor)
 
@@ -95,12 +95,12 @@ struct ScreenPickerRow: View {
     private var currentSelectionLabel: String {
         switch screenSelector.selectionMode {
         case .automatic:
-            return "Auto"
+            return L10n.auto
         case .specificScreen:
             if let screen = screenSelector.selectedScreen {
                 return screen.localizedName
             }
-            return "Auto"
+            return L10n.auto
         }
     }
 

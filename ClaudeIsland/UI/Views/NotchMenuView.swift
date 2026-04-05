@@ -18,15 +18,18 @@ struct NotchMenuView: View {
     @ObservedObject private var updateManager = UpdateManager.shared
     @ObservedObject private var screenSelector = ScreenSelector.shared
     @ObservedObject private var soundSelector = SoundSelector.shared
+    @ObservedObject private var settingsStore = SettingsStore.shared
     @State private var hooksInstalled: Bool = false
     @State private var launchAtLogin: Bool = false
+    @State private var autoApproveEnabled: Bool = false
+    @State private var languageRefresh = false
 
     var body: some View {
         VStack(spacing: 4) {
             // Back button
             MenuRow(
                 icon: "chevron.left",
-                label: "Back"
+                label: L10n.back
             ) {
                 viewModel.toggleMenu()
             }
@@ -38,6 +41,7 @@ struct NotchMenuView: View {
             // Appearance settings
             ScreenPickerRow(screenSelector: screenSelector)
             SoundPickerRow(soundSelector: soundSelector)
+            LanguageRow()
 
             Divider()
                 .background(Color.white.opacity(0.08))
@@ -46,7 +50,7 @@ struct NotchMenuView: View {
             // System settings
             MenuToggleRow(
                 icon: "power",
-                label: "Launch at Login",
+                label: L10n.launchAtLogin,
                 isOn: launchAtLogin
             ) {
                 do {
@@ -64,7 +68,7 @@ struct NotchMenuView: View {
 
             MenuToggleRow(
                 icon: "arrow.triangle.2.circlepath",
-                label: "Hooks",
+                label: L10n.hooks,
                 isOn: hooksInstalled
             ) {
                 if hooksInstalled {
@@ -78,11 +82,20 @@ struct NotchMenuView: View {
 
             AccessibilityRow(isEnabled: AXIsProcessTrusted())
 
+            MenuToggleRow(
+                icon: "checkmark.shield",
+                label: L10n.autoApprove,
+                isOn: autoApproveEnabled
+            ) {
+                AppSettings.isAutoApproveEnabled.toggle()
+                autoApproveEnabled = AppSettings.isAutoApproveEnabled
+            }
+
             Divider()
                 .background(Color.white.opacity(0.08))
                 .padding(.vertical, 4)
 
-            Text("Enabled Agents")
+            Text(L10n.enabledAgents)
                 .font(.system(size: 11))
                 .foregroundColor(.white.opacity(0.5))
                 .padding(.horizontal, 12)
@@ -91,10 +104,10 @@ struct NotchMenuView: View {
                 MenuToggleRow(
                     icon: provider.iconName,
                     label: provider.rawValue,
-                    isOn: AppSettings.isEnabled(provider)
+                    isOn: settingsStore.isEnabled(provider)
                 ) {
-                    AppSettings.toggle(provider)
-                    if AppSettings.isEnabled(provider) {
+                    settingsStore.toggle(provider)
+                    if settingsStore.isEnabled(provider) {
                         HookInstaller.installHooks(for: provider)
                     } else {
                         HookInstaller.uninstallHooks(for: provider)
@@ -111,7 +124,7 @@ struct NotchMenuView: View {
 
             MenuRow(
                 icon: "star",
-                label: "Star on GitHub"
+                label: L10n.starOnGithub
             ) {
                 if let url = URL(string: "https://github.com/farouqaldori/claude-island") {
                     NSWorkspace.shared.open(url)
@@ -124,10 +137,12 @@ struct NotchMenuView: View {
 
             MenuRow(
                 icon: "xmark.circle",
-                label: "Quit",
+                label: L10n.quit,
                 isDestructive: true
             ) {
-                NSApplication.shared.terminate(nil)
+                DispatchQueue.main.async {
+                    NSApplication.shared.terminate(nil)
+                }
             }
         }
         .padding(.horizontal, 8)
@@ -141,11 +156,16 @@ struct NotchMenuView: View {
                 refreshStates()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .languageDidChange)) { _ in
+            languageRefresh.toggle()
+        }
+        .id(languageRefresh)
     }
 
     private func refreshStates() {
         hooksInstalled = HookInstaller.isInstalled()
         launchAtLogin = SMAppService.mainApp.status == .enabled
+        autoApproveEnabled = AppSettings.isAutoApproveEnabled
         screenSelector.refreshScreens()
     }
 
@@ -227,7 +247,7 @@ struct UpdateRow: View {
                 Image(systemName: "checkmark")
                     .font(.system(size: 9, weight: .bold))
                     .foregroundColor(TerminalColors.green)
-                Text("Up to date")
+                Text(L10n.upToDate)
                     .font(.system(size: 11))
                     .foregroundColor(TerminalColors.green)
             }
@@ -280,7 +300,7 @@ struct UpdateRow: View {
             }
 
         case .error:
-            Text("Retry")
+            Text(L10n.retry)
                 .font(.system(size: 11))
                 .foregroundColor(.white.opacity(0.5))
         }
@@ -335,23 +355,23 @@ struct UpdateRow: View {
     private var label: String {
         switch updateManager.state {
         case .idle:
-            return "Check for Updates"
+            return L10n.checkForUpdates
         case .checking:
-            return "Checking..."
+            return L10n.checking
         case .upToDate:
-            return "Check for Updates"
+            return L10n.checkForUpdates
         case .found:
-            return "Download Update"
+            return L10n.downloadUpdate
         case .downloading:
-            return "Downloading..."
+            return L10n.downloading
         case .extracting:
-            return "Extracting..."
+            return L10n.extracting
         case .readyToInstall:
-            return "Install & Relaunch"
+            return L10n.installAndRelaunch
         case .installing:
-            return "Installing..."
+            return L10n.installing
         case .error:
-            return "Update failed"
+            return L10n.updateFailed
         }
     }
 
@@ -414,7 +434,7 @@ struct AccessibilityRow: View {
                 .foregroundColor(textColor)
                 .frame(width: 16)
 
-            Text("Accessibility")
+            Text(L10n.accessibility)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(textColor)
 
@@ -425,12 +445,12 @@ struct AccessibilityRow: View {
                     .fill(TerminalColors.green)
                     .frame(width: 6, height: 6)
 
-                Text("On")
+                Text(L10n.on)
                     .font(.system(size: 11))
                     .foregroundColor(.white.opacity(0.4))
             } else {
                 Button(action: openAccessibilitySettings) {
-                    Text("Enable")
+                    Text(L10n.enable)
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(.black)
                         .padding(.horizontal, 10)
@@ -497,6 +517,8 @@ struct MenuRow: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
+        .contentShape(Rectangle())  // Ensure entire row is clickable
+        .allowsHitTesting(true)    // Ensure taps are received by the button
     }
 
     private var textColor: Color {
@@ -533,7 +555,7 @@ struct MenuToggleRow: View {
                     .fill(isOn ? TerminalColors.green : Color.white.opacity(0.3))
                     .frame(width: 6, height: 6)
 
-                Text(isOn ? "On" : "Off")
+                Text(isOn ? L10n.on : L10n.off)
                     .font(.system(size: 11))
                     .foregroundColor(.white.opacity(0.4))
             }
@@ -546,9 +568,56 @@ struct MenuToggleRow: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
+        .contentShape(Rectangle())  // Ensure entire row is clickable
+        .allowsHitTesting(true)    // Ensure taps are received by the button
     }
 
     private var textColor: Color {
         .white.opacity(isHovered ? 1.0 : 0.7)
+    }
+}
+
+struct LanguageRow: View {
+    @State private var isHovered = false
+    @State private var currentLang = AppSettings.language
+
+    var body: some View {
+        Button {
+            let newLang: AppLanguage = currentLang == .english ? .chinese : .english
+            AppSettings.language = newLang
+            currentLang = newLang
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "globe")
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(isHovered ? 1.0 : 0.7))
+                    .frame(width: 16)
+
+                Text(L10n.language)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.white.opacity(isHovered ? 1.0 : 0.7))
+
+                Spacer()
+
+                Text(currentLang.displayName)
+                    .font(.system(size: 11))
+                    .foregroundColor(.white.opacity(0.4))
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10))
+                    .foregroundColor(.white.opacity(0.4))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isHovered ? Color.white.opacity(0.08) : Color.clear)
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .onReceive(NotificationCenter.default.publisher(for: .languageDidChange)) { _ in
+            currentLang = AppSettings.language
+        }
     }
 }
