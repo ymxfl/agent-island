@@ -23,7 +23,7 @@ struct HookInstaller {
         }
     }
 
-    private static func installHooks(for provider: AgentProvider) {
+    internal static func installHooks(for provider: AgentProvider) {
         let configDir = provider.configDirectory.expandingTildeInURL
         let hooksDir = configDir.appendingPathComponent("hooks")
         let pythonScript = hooksDir.appendingPathComponent(provider.hookScriptName)
@@ -158,7 +158,7 @@ struct HookInstaller {
         }
     }
 
-    private static func uninstallHooks(for provider: AgentProvider) {
+    internal static func uninstallHooks(for provider: AgentProvider) {
         let configDir = provider.configDirectory.expandingTildeInURL
         let hooksDir = configDir.appendingPathComponent("hooks")
         let pythonScript = hooksDir.appendingPathComponent(provider.hookScriptName)
