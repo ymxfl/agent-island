@@ -199,6 +199,23 @@ struct ChatView: View {
                 ProviderIndicator(session.provider, showLabel: true)
 
                 Spacer()
+
+                // Terminal jump button (when tty is available)
+                if let tty = session.tty {
+                    Button {
+                        if let terminal = TerminalDetector.shared.detectRunningTerminal(for: tty) {
+                            TerminalJumpService.shared.jumpToTTY(tty, terminal: terminal)
+                        } else {
+                            print("Could not detect terminal for TTY: \(tty)")
+                        }
+                    } label: {
+                        Image(systemName: "arrow.forward.to.rectangle")
+                            .font(.system(size: 12))
+                            .foregroundColor(.white.opacity(0.6))
+                            .padding(6)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
