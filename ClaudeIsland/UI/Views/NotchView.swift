@@ -464,6 +464,15 @@ struct NotchView: View {
             if viewModel.openReason == .click || viewModel.openReason == .hover {
                 waitingForInputTimestamps.removeAll()
             }
+
+            // Auto-open most recent session
+            if case .instances = viewModel.contentType,
+               !sessionMonitor.instances.isEmpty {
+                let sorted = sessionMonitor.instances.sorted { $0.lastActivity > $1.lastActivity }
+                if let mostRecent = sorted.first {
+                    viewModel.showChat(for: mostRecent)
+                }
+            }
         case .closed:
             // Don't hide on non-notched devices - users need a visible target
             guard viewModel.hasPhysicalNotch else { return }

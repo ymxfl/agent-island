@@ -233,7 +233,8 @@ class NotchViewModel: ObservableObject {
         openReason = reason
         status = .opened
 
-        // Always show instances list when opening the island
+        // Reset to instances list first; the view will auto-open
+        // the most recent session from handleStatusChange
         currentChatSession = nil
         if case .instances = contentType {
             return

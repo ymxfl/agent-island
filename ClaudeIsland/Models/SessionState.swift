@@ -127,9 +127,13 @@ struct SessionState: Equatable, Identifiable, Sendable {
         return sessionId
     }
 
-    /// Display title: summary > first user message > project name
+    /// Display title: projectName·sessionTitle
     var displayTitle: String {
-        conversationInfo.summary ?? conversationInfo.firstUserMessage ?? projectName
+        let sessionTitle = conversationInfo.summary ?? conversationInfo.firstUserMessage
+        if let title = sessionTitle {
+            return "\(projectName)·\(title)"
+        }
+        return projectName
     }
 
     /// Best hint for matching window title
