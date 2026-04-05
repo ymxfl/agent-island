@@ -182,7 +182,7 @@ def main():
 
     elif event == "SessionStart":
         # New session starts waiting for user input
-        state["status"] = "waitingaring_for_input"
+        state["status"] = "waiting_for_input"
 
     elif event == "SessionEnd":
         state["status"] = "ended"
