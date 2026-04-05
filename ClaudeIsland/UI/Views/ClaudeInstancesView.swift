@@ -153,7 +153,7 @@ struct InstanceRow: View {
                 .frame(width: 14)
 
             // Provider indicator
-            ProviderIndicator(provider: session.provider)
+            ProviderIndicator(session.provider)
 
             // Text content
             VStack(alignment: .leading, spacing: 2) {

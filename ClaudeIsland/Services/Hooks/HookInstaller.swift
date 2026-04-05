@@ -35,7 +35,7 @@ struct HookInstaller {
         )
 
         if let bundled = Bundle.main.url(
-            forResource: provider.hookScriptName.dropLast(3),
+            forResource: String(provider.hookScriptName.dropLast(3)),
             withExtension: "py"
         ) {
             try? FileManager.default.removeItem(at: pythonScript)
