@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
 """
-Cursor Agent Island Hook
-- Sends session state to ClaudeIsland.app via Unix socket
-- For PermissionRequest: waits for user decision from the app
+Cursor Agent → Agent Island Bridge
+- Reads Cursor hooks.json event payloads from stdin
+- Maps Cursor events to the Agent Island socket protocol
+- Supports permission decisions for beforeShellExecution / beforeMCPExecution
+
+Cursor hook events (hooks.json, version 1):
+  beforeSubmitPrompt  → user sends a prompt
+  beforeShellExecution → before running a shell command (can allow/deny)
+  beforeMCPExecution   → before calling an MCP tool (can allow/deny)
+  afterFileEdit        → after a file was edited
+  beforeReadFile       → before reading a file (can allow/deny)
+  stop                 → agent finished (completed/aborted/error)
 """
 import json
 import os
@@ -10,54 +19,17 @@ import socket
 import sys
 
 SOCKET_PATH = "/tmp/claude-island.sock"
-TIMEOUT_SECONDS = 300  # 5 minutes for permission decisions
-
-
-def get_tty():
-    """Get the TTY of the Cursor process (parent)"""
-    import subprocess
-
-    # Get parent PID (Cursor process)
-    ppid = os.getppid()
-
-    # Try to get TTY from ps command for the parent process
-    try:
-        result = subprocess.run(
-            ["ps", "-p", str(ppid), "-o", "tty="],
-            capture_output=True,
-            text=True,
-            timeout=2
-        )
-        tty = result.stdout.strip()
-        if tty and tty != "??" and tty != "-":
-            # ps returns just "ttys001", we need "/dev/ttys001"
-            if not tty.startswith("/dev/"):
-                tty = "/dev/" + tty
-            return tty
-    except Exception:
-        pass
-
-    # Fallback: try current process stdin/stdout
-    try:
-        return os.ttyname(sys.stdin.fileno())
-    except (OSError, AttributeError):
-        pass
-    try:
-        return os.ttyname(sys.stdout.fileno())
-    except (OSError, AttributeError):
-        pass
-    return None
+TIMEOUT_SECONDS = 300
 
 
 def send_event(state):
-    """Send event to app, return response if any"""
+    """Send event to Agent Island app, return response if any."""
     try:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.settimeout(TIMEOUT_SECONDS)
         sock.connect(SOCKET_PATH)
         sock.sendall(json.dumps(state).encode())
 
-        # For permission requests, wait for response
         if state.get("status") == "waiting_for_approval":
             response = sock.recv(4096)
             sock.close()
@@ -77,124 +49,111 @@ def main():
     except json.JSONDecodeError:
         sys.exit(1)
 
-    session_id = data.get("session_id", "unknown")
     event = data.get("hook_event_name", "")
-    cwd = data.get("cwd", "")
-    tool_input = data.get("tool_input", {})
+    conversation_id = data.get("conversation_id", "unknown")
+    workspace_roots = data.get("workspace_roots", [])
+    cwd = workspace_roots[0] if workspace_roots else os.getcwd()
 
-    # Get process info
-    cursor_pid = os.getppid()
-    tty = get_tty()
-
-    # Build state object
     state = {
-        "session_id": session_id,
+        "session_id": conversation_id,
         "cwd": cwd,
         "event": event,
-        "pid": cursor_pid,
-        "tty": tty,
+        "pid": os.getpid(),
+        "tty": None,
         "provider": "cursor",
     }
 
-    # Map events to status
-    if event == "UserPromptSubmit":
-        # User just sent a message - Cursor is now processing
+    if event == "beforeSubmitPrompt":
+        state["event"] = "UserPromptSubmit"
         state["status"] = "processing"
 
-    elif event == "PreToolUse":
-        state["status"] = "running_tool"
-        state["tool"] = data.get("tool_name")
-        state["tool_input"] = tool_input
-        # Send tool_use_id to Swift for caching
-        tool_use_id_from_event = data.get("tool_use_id")
-        if tool_use_id_from_event:
-            state["tool_use_id"] = tool_use_id_from_event
-
-    elif event == "PostToolUse":
-        state["status"] = "processing"
-        state["tool"] = data.get("tool_name")
-        state["tool_input"] = tool_input
-        # Send tool_use_id so Swift can cancel the specific pending permission
-        tool_use_id_from_event = data.get("tool_use_id")
-        if tool_use_id_from_event:
-            state["tool_use_id"] = tool_use_id_from_event
-
-    elif event == "PermissionRequest":
-        # This is where we can control the permission
+    elif event == "beforeShellExecution":
+        command = data.get("command", "")
+        shell_cwd = data.get("cwd", cwd)
+        state["event"] = "PreToolUse"
         state["status"] = "waiting_for_approval"
-        state["tool"] = data.get("tool_name")
-        state["tool_input"] = tool_input
-        # tool_use_id lookup handled by Swift-side cache from PreToolUse
+        state["tool"] = "Shell"
+        state["tool_input"] = {"command": command, "cwd": shell_cwd}
 
-        # Send to app and wait for decision
         response = send_event(state)
 
         if response:
             decision = response.get("decision", "ask")
-            reason = response.get("reason", "")
-
             if decision == "allow":
-                # Output JSON to approve
-                output = {
-                    "hookSpecificOutput": {
-                        "hookEventName": "PermissionRequest",
-                        "decision": {"behavior": "allow"},
-                    }
-                }
-                print(json.dumps(output))
+                print(json.dumps({"permission": "allow"}))
                 sys.exit(0)
-
             elif decision == "deny":
-                # Output JSON to deny
-                output = {
-                    "hookSpecificOutput": {
-                        "hookEventName": "PermissionRequest",
-                        "decision": {
-                            "behavior": "deny",
-                            "message": reason or "Denied by user via ClaudeIsland",
-                        },
-                    }
-                }
-                print(json.dumps(output))
+                reason = response.get("reason", "Denied by user via Agent Island")
+                print(json.dumps({
+                    "permission": "deny",
+                    "agentMessage": reason,
+                }))
                 sys.exit(0)
 
-        # No response or "ask" - let Cursor show its normal UI
+        # Default: let Cursor show its own UI
+        print(json.dumps({"permission": "ask"}))
         sys.exit(0)
 
-    elif event == "Notification":
-        notification_type = data.get("notification_type")
-        # Skip permission_prompt - PermissionRequest hook handles this with better info
-        if notification_type == "permission_prompt":
-            sys.exit(0)
-        elif notification_type == "idle_prompt":
+    elif event == "beforeMCPExecution":
+        tool_name = data.get("tool_name", "unknown")
+        tool_input = data.get("tool_input", {})
+        state["event"] = "PreToolUse"
+        state["status"] = "waiting_for_approval"
+        state["tool"] = tool_name
+        state["tool_input"] = (
+            tool_input if isinstance(tool_input, dict) else {"raw": str(tool_input)}
+        )
+
+        response = send_event(state)
+
+        if response:
+            decision = response.get("decision", "ask")
+            if decision == "allow":
+                print(json.dumps({"permission": "allow"}))
+                sys.exit(0)
+            elif decision == "deny":
+                reason = response.get("reason", "Denied by user via Agent Island")
+                print(json.dumps({
+                    "permission": "deny",
+                    "agentMessage": reason,
+                }))
+                sys.exit(0)
+
+        print(json.dumps({"permission": "ask"}))
+        sys.exit(0)
+
+    elif event == "afterFileEdit":
+        state["event"] = "PostToolUse"
+        state["status"] = "processing"
+        state["tool"] = "FileEdit"
+        file_path = data.get("file_path", "")
+        state["tool_input"] = {"file_path": file_path}
+
+    elif event == "beforeReadFile":
+        state["event"] = "PreToolUse"
+        state["status"] = "running_tool"
+        state["tool"] = "Read"
+        file_path = data.get("file_path", "")
+        state["tool_input"] = {"file_path": file_path}
+        send_event(state)
+        print(json.dumps({"permission": "allow"}))
+        sys.exit(0)
+
+    elif event == "stop":
+        stop_status = data.get("status", "completed")
+        if stop_status == "completed":
+            state["event"] = "Stop"
+            state["status"] = "waiting_for_input"
+        elif stop_status == "aborted":
+            state["event"] = "Stop"
             state["status"] = "waiting_for_input"
         else:
-            state["status"] = "notification"
-        state["notification_type"] = notification_type
-        state["message"] = data.get("message")
-
-    elif event == "Stop":
-        state["status"] = "waiting_for_input"
-
-    elif event == "SubagentStop":
-        # SubagentStop fires when a subagent completes - usually means back to waiting
-        state["status"] = "waiting_for_input"
-
-    elif event == "SessionStart":
-        # New session starts waiting for user input
-        state["status"] = "waiting_for_input"
-
-    elif event == "SessionEnd":
-        state["status"] = "ended"
-
-    elif event == "PreCompact":
-        # Context is being compacted (manual or auto)
-        state["status"] = "compacting"
+            state["event"] = "Stop"
+            state["status"] = "waiting_for_input"
 
     else:
         state["status"] = "unknown"
 
-    # Send to socket (fire and forget for non-permission events)
     send_event(state)
 
 

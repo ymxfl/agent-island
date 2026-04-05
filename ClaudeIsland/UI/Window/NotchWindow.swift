@@ -11,6 +11,10 @@ import AppKit
 
 // Use NSPanel subclass for non-activating behavior
 class NotchPanel: NSPanel {
+    /// Callback to check if the notch panel is logically open.
+    /// Used by sendEvent to restore ignoresMouseEvents after pass-through repost.
+    var isPanelOpen: () -> Bool = { false }
+
     override init(
         contentRect: NSRect,
         styleMask style: NSWindow.StyleMask,
@@ -76,14 +80,24 @@ class NotchPanel: NSPanel {
             // Check if any view wants to handle this event
             if let contentView = self.contentView,
                contentView.hitTest(locationInWindow) == nil {
-                // No view wants this event - pass it through to windows behind
-                // by temporarily ignoring mouse events and re-posting
+                // No view wants this event - pass it through to windows behind.
+                // Temporarily ignore mouse events so the reposted event doesn't
+                // bounce back to us, then restore based on panel state.
                 let screenLocation = convertPoint(toScreen: locationInWindow)
                 ignoresMouseEvents = true
 
-                // Re-post the event after a tiny delay
                 DispatchQueue.main.async { [weak self] in
                     self?.repostMouseEvent(event, at: screenLocation)
+
+                    // Restore mouse event handling after the reposted event has
+                    // been dispatched, so subsequent clicks aren't permanently
+                    // swallowed by the pass-through flag.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                        guard let self = self else { return }
+                        if self.isPanelOpen() {
+                            self.ignoresMouseEvents = false
+                        }
+                    }
                 }
                 return
             }

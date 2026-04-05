@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// 支持的 AI 编程代理
-enum AgentProvider: String, Codable, CaseIterable, Sendable {
+enum AgentProvider: String, CaseIterable, Sendable {
     case claude = "Claude Code"
     case gemini = "Gemini CLI"
     case codex = "OpenAI Codex"
@@ -61,5 +61,57 @@ enum AgentProvider: String, Codable, CaseIterable, Sendable {
         case .cursor: return "Cursor"
         case .opencode: return "OpenCode"
         }
+    }
+
+}
+
+// MARK: - Codable (accept lowercase wire names from hook scripts)
+
+extension AgentProvider: Codable {
+    /// Mapping from wire format strings (sent by Python hook scripts) to enum cases.
+    private static let wireNameMap: [String: AgentProvider] = [
+        "claude": .claude,
+        "gemini": .gemini,
+        "codex": .codex,
+        "cursor": .cursor,
+        "opencode": .opencode,
+    ]
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let value = try container.decode(String.self)
+        if let match = Self.wireNameMap[value.lowercased()] {
+            self = match
+        } else if let match = Self(rawValue: value) {
+            self = match
+        } else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unknown AgentProvider: \(value)"
+            )
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+}
+
+// MARK: - Hooks configuration
+
+extension AgentProvider {
+    /// Whether this provider uses its own hooks.json format (e.g. Cursor)
+    /// rather than the standard Claude Code settings.json hooks.
+    var usesNativeHooksJson: Bool {
+        switch self {
+        case .cursor: return true
+        default: return false
+        }
+    }
+
+    /// Hooks config filename — ``hooks.json`` for native systems, ``settings.json`` otherwise.
+    var hooksConfigFilename: String {
+        usesNativeHooksJson ? "hooks.json" : "settings.json"
     }
 }

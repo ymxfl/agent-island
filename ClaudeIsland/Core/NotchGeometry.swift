@@ -24,12 +24,11 @@ struct NotchGeometry: Sendable {
         )
     }
 
-    /// The opened panel rect in screen coordinates for a given size
+    /// The opened panel rect in screen coordinates for a given size.
+    /// Width includes the same corner-radius / padding allowance (+52) used by
+    /// PassThroughHostingView.hitTestRect so both layers agree on what is "inside".
     func openedScreenRect(for size: CGSize) -> CGRect {
-        // Use full logical height so bottom rows (e.g. settings “Quit”) are not treated as
-        // “outside” the panel. A shorter rect caused global mouseDown to run notchClose +
-        // repost before the button received the click.
-        let width = size.width - 6
+        let width = size.width + 52
         let height = size.height
         return CGRect(
             x: screenRect.midX - width / 2,

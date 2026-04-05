@@ -55,6 +55,10 @@ class NotchWindowController: NSWindowController {
 
         super.init(window: notchWindow)
 
+        notchWindow.isPanelOpen = { [weak viewModel] in
+            viewModel?.status == .opened
+        }
+
         // Create the SwiftUI view with pass-through hosting
         let hostingController = NotchViewController(viewModel: viewModel)
         notchWindow.contentViewController = hostingController
