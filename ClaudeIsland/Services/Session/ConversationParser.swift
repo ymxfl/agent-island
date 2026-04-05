@@ -72,8 +72,7 @@ actor ConversationParser {
     /// Parse a JSONL file to extract conversation info
     /// Uses caching based on file modification time
     func parse(sessionId: String, cwd: String) -> ConversationInfo {
-        let projectDir = cwd.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ".", with: "-")
-        let sessionFile = NSHomeDirectory() + "/.claude/projects/" + projectDir + "/" + sessionId + ".jsonl"
+        let sessionFile = Self.sessionFilePath(sessionId: sessionId, cwd: cwd)
 
         let fileManager = FileManager.default
         guard fileManager.fileExists(atPath: sessionFile),
@@ -457,10 +456,43 @@ actor ConversationParser {
         return true
     }
 
-    /// Build session file path
+    /// Build session file path.
+    /// First tries an exact match ``{projectDir}/{sessionId}.jsonl``.
+    /// If that doesn't exist (e.g. Cursor's conversation_id differs from
+    /// the internal Claude Code session_id), falls back to the most
+    /// recently modified JSONL in the same project directory.
     private static func sessionFilePath(sessionId: String, cwd: String) -> String {
         let projectDir = cwd.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ".", with: "-")
-        return NSHomeDirectory() + "/.claude/projects/" + projectDir + "/" + sessionId + ".jsonl"
+        let baseDir = NSHomeDirectory() + "/.claude/projects/" + projectDir
+        let exactPath = baseDir + "/" + sessionId + ".jsonl"
+
+        if FileManager.default.fileExists(atPath: exactPath) {
+            return exactPath
+        }
+
+        // Fallback: find most recently modified JSONL (skip agent-*.jsonl)
+        let dirURL = URL(fileURLWithPath: baseDir)
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: dirURL,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: .skipsHiddenFiles
+        ) else {
+            return exactPath
+        }
+
+        let best = files
+            .filter { $0.pathExtension == "jsonl" && !$0.lastPathComponent.hasPrefix("agent-") }
+            .compactMap { url -> (URL, Date)? in
+                guard let attrs = try? url.resourceValues(forKeys: [.contentModificationDateKey]),
+                      let date = attrs.contentModificationDate else { return nil }
+                return (url, date)
+            }
+            .max(by: { $0.1 < $1.1 })
+
+        if let best = best {
+            return best.0.path
+        }
+        return exactPath
     }
 
     private func parseMessageLine(_ json: [String: Any], seenToolIds: inout Set<String>, toolIdToName: inout [String: String]) -> ChatMessage? {

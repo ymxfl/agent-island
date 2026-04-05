@@ -117,6 +117,14 @@ actor SessionStore {
 
     private func processHookEvent(_ event: HookEvent) async {
         let sessionId = event.sessionId
+
+        // Discard events with no meaningful workspace (e.g. internal SDK processes)
+        let cwd = event.cwd
+        if cwd.isEmpty || cwd == "/" {
+            Self.logger.debug("Ignoring event with invalid cwd '\(cwd, privacy: .public)' for \(sessionId.prefix(8), privacy: .public)")
+            return
+        }
+
         let isNewSession = sessions[sessionId] == nil
         var session = sessions[sessionId] ?? createSession(from: event)
 
