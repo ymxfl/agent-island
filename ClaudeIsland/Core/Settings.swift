@@ -38,6 +38,7 @@ enum AppSettings {
 
     private enum Keys {
         static let notificationSound = "notificationSound"
+        static let enabledProviders = "enabledProviders"
     }
 
     // MARK: - Notification Sound
@@ -54,5 +55,39 @@ enum AppSettings {
         set {
             defaults.set(newValue.rawValue, forKey: Keys.notificationSound)
         }
+    }
+}
+
+// MARK: - Agent enabled settings
+
+extension AppSettings {
+    static var enabledProviders: Set<AgentProvider> {
+        get {
+            guard let data = defaults.data(forKey: Keys.enabledProviders),
+                  let decoded = try? JSONDecoder().decode(Set<AgentProvider>.self, from: data) else {
+                // Default: all enabled
+                return Set(AgentProvider.allCases)
+            }
+            return decoded
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue) {
+                defaults.set(data, forKey: Keys.enabledProviders)
+            }
+        }
+    }
+
+    static func isEnabled(_ provider: AgentProvider) -> Bool {
+        enabledProviders.contains(provider)
+    }
+
+    static func toggle(_ provider: AgentProvider) {
+        var providers = enabledProviders
+        if providers.contains(provider) {
+            providers.remove(provider)
+        } else {
+            providers.insert(provider)
+        }
+        enabledProviders = providers
     }
 }

@@ -82,6 +82,30 @@ struct NotchMenuView: View {
                 .background(Color.white.opacity(0.08))
                 .padding(.vertical, 4)
 
+            Text("Enabled Agents")
+                .font(.system(size: 11))
+                .foregroundColor(.white.opacity(0.5))
+                .padding(.horizontal, 12)
+
+            ForEach(AgentProvider.allCases, id: \.self) { provider in
+                MenuToggleRow(
+                    icon: provider.iconName,
+                    label: provider.rawValue,
+                    isOn: AppSettings.isEnabled(provider)
+                ) {
+                    AppSettings.toggle(provider)
+                    if AppSettings.isEnabled(provider) {
+                        HookInstaller.installHooks(for: provider)
+                    } else {
+                        HookInstaller.uninstallHooks(for: provider)
+                    }
+                }
+            }
+
+            Divider()
+                .background(Color.white.opacity(0.08))
+                .padding(.vertical, 4)
+
             // About
             UpdateRow(updateManager: updateManager)
 
@@ -123,6 +147,10 @@ struct NotchMenuView: View {
         hooksInstalled = HookInstaller.isInstalled()
         launchAtLogin = SMAppService.mainApp.status == .enabled
         screenSelector.refreshScreens()
+    }
+
+    private func toggle(_ provider: AgentProvider) {
+        AppSettings.toggle(provider)
     }
 }
 
