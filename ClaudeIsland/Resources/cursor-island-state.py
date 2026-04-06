@@ -66,6 +66,9 @@ def main():
     if event == "beforeSubmitPrompt":
         state["event"] = "UserPromptSubmit"
         state["status"] = "processing"
+        prompt = data.get("prompt", "")
+        if prompt:
+            state["message"] = prompt
 
     elif event == "beforeShellExecution":
         command = data.get("command", "")

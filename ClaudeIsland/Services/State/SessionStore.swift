@@ -144,8 +144,13 @@ actor SessionStore {
         session.lastActivity = Date()
 
         if event.status == "ended" {
-            sessions.removeValue(forKey: sessionId)
+            // Transition to ended phase but keep the session so history remains visible
+            if session.phase.canTransition(to: .ended) {
+                session.phase = .ended
+            }
             cancelPendingSync(sessionId: sessionId)
+            sessions[sessionId] = session
+            publishState()
             return
         }
 
@@ -162,6 +167,7 @@ actor SessionStore {
             updateToolStatus(in: &session, toolId: toolUseId, status: .waitingForApproval)
         }
 
+        processUserMessage(event: event, session: &session)
         processToolTracking(event: event, session: &session)
         processSubagentTracking(event: event, session: &session)
 
@@ -173,7 +179,11 @@ actor SessionStore {
         publishState()
 
         if isNewSession || event.shouldSyncFile {
-            scheduleFileSync(sessionId: sessionId, cwd: event.cwd)
+            if session.provider == .cursor {
+                scheduleCursorSync(sessionId: sessionId)
+            } else {
+                scheduleFileSync(sessionId: sessionId, cwd: event.cwd)
+            }
         }
     }
 
@@ -188,6 +198,27 @@ actor SessionStore {
             isInTmux: false,  // Will be updated
             phase: .idle
         )
+    }
+
+    /// Create a user message chat item from hook events (for agents without JSONL history)
+    private func processUserMessage(event: HookEvent, session: inout SessionState) {
+        guard event.event == "UserPromptSubmit",
+              let message = event.message, !message.isEmpty else { return }
+
+        let itemId = "hook-user-\(session.sessionId)-\(Int(Date().timeIntervalSince1970 * 1000))"
+        let userItem = ChatHistoryItem(
+            id: itemId,
+            type: .user(message),
+            timestamp: Date()
+        )
+        session.chatItems.append(userItem)
+
+        if session.conversationInfo.firstUserMessage == nil {
+            session.conversationInfo.firstUserMessage = String(message.prefix(100))
+        }
+        session.conversationInfo.lastMessage = String(message.prefix(200))
+        session.conversationInfo.lastMessageRole = "user"
+        session.conversationInfo.lastUserMessageDate = Date()
     }
 
     private func processToolTracking(event: HookEvent, session: inout SessionState) {
@@ -962,6 +993,28 @@ actor SessionStore {
 
             await self?.process(.fileUpdated(payload))
         }
+    }
+
+    /// Schedule a debounced Cursor SQLite sync for richer conversation data
+    private func scheduleCursorSync(sessionId: String) {
+        cancelPendingSync(sessionId: sessionId)
+
+        pendingSyncs[sessionId] = Task { [weak self, syncDebounceNs] in
+            try? await Task.sleep(nanoseconds: syncDebounceNs)
+            guard !Task.isCancelled else { return }
+
+            guard let self = self else { return }
+            guard var session = await self.session(for: sessionId) else { return }
+
+            await CursorStateReader.shared.loadConversation(composerId: sessionId, into: &session)
+            await self.updateSession(session)
+        }
+    }
+
+    /// Directly update a session (used by Cursor sync)
+    private func updateSession(_ session: SessionState) {
+        sessions[session.sessionId] = session
+        publishState()
     }
 
     private func cancelPendingSync(sessionId: String) {
